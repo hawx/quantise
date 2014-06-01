@@ -104,8 +104,8 @@ const (
 	MOST
 )
 
-func (tree *Oct) Insert(c color.Color, strategy MergeStrategy) {
-	if len(tree.Leaves()) <= 256 {
+func (tree *Oct) Insert(c color.Color, size int, strategy MergeStrategy) {
+	if len(tree.Leaves()) <= size {
 		r, g, b, _ := c.RGBA()
 		tree.justInsert(&c, uint8(r), uint8(g), uint8(b), 0)
 
@@ -126,7 +126,7 @@ func (tree *Oct) Insert(c color.Color, strategy MergeStrategy) {
 		}
 
 		toMerge.Average()
-		tree.Insert(c, strategy)
+		tree.Insert(c, size, strategy)
 	}
 }
 
@@ -190,13 +190,13 @@ func (tree *Oct) Palette() color.Palette {
 	return colors
 }
 
-func QuantizeOctree(img image.Image, strategy MergeStrategy) image.Image {
+func QuantizeOctree(img image.Image, size int, strategy MergeStrategy) image.Image {
 	octree := NewOctree()
 	bounds := img.Bounds()
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			octree.Insert(img.At(x, y), strategy)
+			octree.Insert(img.At(x, y), size, strategy)
 		}
 	}
 
