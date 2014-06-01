@@ -1,4 +1,4 @@
-package quantize
+package quantise
 
 import (
 	"image"
