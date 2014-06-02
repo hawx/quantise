@@ -190,24 +190,21 @@ func (tree *Oct) Palette() color.Palette {
 	return colors
 }
 
-func QuantizeOctree(img image.Image, size int, depth uint8, strategy MergeStrategy) image.Image {
+type OctreeQuantiser struct {
+	Size      int
+	Depth     uint8
+	Strategy  MergeStrategy
+}
+
+func (q OctreeQuantiser) Quantise(in image.Image) color.Palette {
 	octree := NewOctree()
-	bounds := img.Bounds()
+	bounds := in.Bounds()
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			octree.Insert(img.At(x, y), size, depth, strategy)
+			octree.Insert(in.At(x, y), q.Size, q.Depth, q.Strategy)
 		}
 	}
 
-	out := image.NewPaletted(bounds, octree.Palette())
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			c := img.At(x, y)
-			out.Set(x, y, c)
-		}
-	}
-
-	return out
+	return octree.Palette()
 }
