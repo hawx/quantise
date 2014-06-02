@@ -28,7 +28,7 @@ func NewOctree() *Oct {
 	return &Oct{isLeaf: false}
 }
 
-func (tree *Oct) justInsert(c *color.Color, r, g, b, depth uint8) {
+func (tree *Oct) justInsert(c *color.Color, r, g, b, depth, maxDepth uint8) {
 	tree.Count += 1
 
 	if tree.isLeaf {
@@ -38,7 +38,7 @@ func (tree *Oct) justInsert(c *color.Color, r, g, b, depth uint8) {
 	index := bit(r, depth)<<2 | bit(g, depth)<<1 | bit(b, depth)
 
 	if tree.Children[index] == nil {
-		if depth == 5 {
+		if depth == maxDepth {
 			tree.Children[index] = &Oct{isLeaf: true, Color: c, Count: 1}
 			return
 		}
@@ -46,7 +46,7 @@ func (tree *Oct) justInsert(c *color.Color, r, g, b, depth uint8) {
 		tree.Children[index] = &Oct{isLeaf: false, Count: 1}
 	}
 
-	tree.Children[index].justInsert(c, r, g, b, depth+1)
+	tree.Children[index].justInsert(c, r, g, b, depth+1, maxDepth)
 }
 
 func (tree *Oct) children() []*Oct {
@@ -104,10 +104,10 @@ const (
 	MOST
 )
 
-func (tree *Oct) Insert(c color.Color, size int, strategy MergeStrategy) {
+func (tree *Oct) Insert(c color.Color, size int, maxDepth uint8, strategy MergeStrategy) {
 	if len(tree.Leaves()) <= size {
 		r, g, b, _ := c.RGBA()
-		tree.justInsert(&c, uint8(r), uint8(g), uint8(b), 0)
+		tree.justInsert(&c, uint8(r), uint8(g), uint8(b), 0, maxDepth)
 
 	} else {
 		deepest := tree.deepest()
@@ -126,7 +126,7 @@ func (tree *Oct) Insert(c color.Color, size int, strategy MergeStrategy) {
 		}
 
 		toMerge.Average()
-		tree.Insert(c, size, strategy)
+		tree.Insert(c, size, maxDepth, strategy)
 	}
 }
 
@@ -190,13 +190,13 @@ func (tree *Oct) Palette() color.Palette {
 	return colors
 }
 
-func QuantizeOctree(img image.Image, size int, strategy MergeStrategy) image.Image {
+func QuantizeOctree(img image.Image, size int, depth uint8, strategy MergeStrategy) image.Image {
 	octree := NewOctree()
 	bounds := img.Bounds()
 
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			octree.Insert(img.At(x, y), size, strategy)
+			octree.Insert(img.At(x, y), size, depth, strategy)
 		}
 	}
 
