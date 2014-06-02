@@ -5,6 +5,36 @@ import (
 	"image/color"
 )
 
+type Strategy int
+const (
+	// Merge the colours representing the fewest pixels
+	LEAST Strategy = iota
+
+	// Merge the colours representing the greatest pixels
+	MOST
+)
+
+type OctreeQuantiser struct {
+	Size      int
+	Depth     uint8
+	Strategy  Strategy
+}
+
+func (q OctreeQuantiser) Quantise(in image.Image) color.Palette {
+	octree := &oct{isLeaf: false}
+	bounds := in.Bounds()
+
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			octree.insert(in.At(x, y), q.Size, q.Depth, q.Strategy)
+		}
+	}
+
+	return octree.palette()
+}
+
+
+
 // returns the dth bit of n
 func bit(n, d uint8) uint8 {
 	if n&(1<<(7-d)) == 0 {
@@ -13,23 +43,19 @@ func bit(n, d uint8) uint8 {
 	return 1
 }
 
-type Oct struct {
+type oct struct {
 	isLeaf bool
 
 	// A node in an octree simply has eight children
-	Children [8]*Oct
+	children [8]*oct
 
 	// A leaf has a color, and count
-	Color *color.Color
-	Count uint64
+	color *color.Color
+	count uint64
 }
 
-func NewOctree() *Oct {
-	return &Oct{isLeaf: false}
-}
-
-func (tree *Oct) justInsert(c *color.Color, r, g, b, depth, maxDepth uint8) {
-	tree.Count += 1
+func (tree *oct) justInsert(c *color.Color, r, g, b, depth, maxDepth uint8) {
+	tree.count += 1
 
 	if tree.isLeaf {
 		return
@@ -37,38 +63,29 @@ func (tree *Oct) justInsert(c *color.Color, r, g, b, depth, maxDepth uint8) {
 
 	index := bit(r, depth)<<2 | bit(g, depth)<<1 | bit(b, depth)
 
-	if tree.Children[index] == nil {
+	if tree.children[index] == nil {
 		if depth == maxDepth {
-			tree.Children[index] = &Oct{isLeaf: true, Color: c, Count: 1}
+			tree.children[index] = &oct{isLeaf: true, color: c, count: 1}
 			return
 		}
 
-		tree.Children[index] = &Oct{isLeaf: false, Count: 1}
+		tree.children[index] = &oct{isLeaf: false, count: 1}
 	}
 
-	tree.Children[index].justInsert(c, r, g, b, depth+1, maxDepth)
+	tree.children[index].justInsert(c, r, g, b, depth+1, maxDepth)
 }
 
-func (tree *Oct) children() []*Oct {
-	nodes := []*Oct{}
-
-	for i := 0; i < 8; i++ {
-		child := tree.Children[i]
-		if child != nil && !child.isLeaf {
-			nodes = append(nodes, child)
-		}
-	}
-
-	return nodes
-}
-
-func (tree *Oct) deepest() []*Oct {
-	nodes := []*Oct{}
-	last := []*Oct{tree}
+func (tree *oct) deepest() []*oct {
+	nodes := []*oct{}
+	last := []*oct{tree}
 
 	for {
-		for i := 0; i < len(last); i++ {
-			nodes = append(nodes, last[i].children()...)
+		for _, l := range last {
+			for _, child := range l.children {
+				if child != nil && !child.isLeaf {
+					nodes = append(nodes, child)
+				}
+			}
 		}
 
 		if len(nodes) == 0 {
@@ -76,36 +93,29 @@ func (tree *Oct) deepest() []*Oct {
 		}
 
 		last = nodes
-		nodes = []*Oct{}
+		nodes = []*oct{}
 	}
 
 	return last
 }
 
-func (tree *Oct) Leaves() []*Oct {
+func (tree *oct) leaves() []*oct {
 	if tree.isLeaf {
-		return []*Oct{tree}
+		return []*oct{tree}
 	}
 
-	leaves := []*Oct{}
-	for i := 0; i < 8; i++ {
-		child := tree.Children[i]
+	leaves := []*oct{}
+	for _, child := range tree.children {
 		if child != nil {
-			leaves = append(leaves, child.Leaves()...)
+			leaves = append(leaves, child.leaves()...)
 		}
 	}
 
 	return leaves
 }
 
-type MergeStrategy int
-const (
-	LEAST MergeStrategy = iota
-	MOST
-)
-
-func (tree *Oct) Insert(c color.Color, size int, maxDepth uint8, strategy MergeStrategy) {
-	if len(tree.Leaves()) <= size {
+func (tree *oct) insert(c color.Color, size int, maxDepth uint8, strategy Strategy) {
+	if len(tree.leaves()) <= size {
 		r, g, b, _ := c.RGBA()
 		tree.justInsert(&c, uint8(r), uint8(g), uint8(b), 0, maxDepth)
 
@@ -115,39 +125,39 @@ func (tree *Oct) Insert(c color.Color, size int, maxDepth uint8, strategy MergeS
 
 		for _, node := range deepest {
 			if strategy == LEAST {
-				if node.Count < toMerge.Count {
+				if node.count < toMerge.count {
 					toMerge = node
 				}
 			} else {
-				if node.Count > toMerge.Count {
+				if node.count > toMerge.count {
 					toMerge = node
 				}
 			}
 		}
 
-		toMerge.Average()
-		tree.Insert(c, size, maxDepth, strategy)
+		toMerge.average()
+		tree.insert(c, size, maxDepth, strategy)
 	}
 }
 
-func (tree *Oct) average() (color.Color, uint64) {
+func (tree *oct) average2() (color.Color, uint64) {
 	if tree == nil {
 		return nil, 0
 	}
 
 	if tree.isLeaf {
-		if tree.Color == nil {
+		if tree.color == nil {
 			return nil, 0
 		}
-		return *tree.Color, tree.Count
+		return *tree.color, tree.count
 	}
 
 	var rt, gt, bt, ct uint64
 
 	for i := 0; i < 8; i++ {
-		child := tree.Children[i]
+		child := tree.children[i]
 
-		avg, c := child.average()
+		avg, c := child.average2()
 		if avg == nil {
 			continue
 		}
@@ -166,45 +176,26 @@ func (tree *Oct) average() (color.Color, uint64) {
 	return color.RGBA{uint8(rt / ct), uint8(gt / ct), uint8(bt / ct), 255}, ct
 }
 
-func (tree *Oct) Average() {
+func (tree *oct) average() {
 	if tree.isLeaf {
 		return
 	}
 
-	avg, ct := tree.average()
+	avg, ct := tree.average2()
 
-	tree.Children = [8]*Oct{}
+	tree.children = [8]*oct{}
 	tree.isLeaf = true
-	tree.Color = &avg
-	tree.Count = ct
+	tree.color = &avg
+	tree.count = ct
 }
 
-func (tree *Oct) Palette() color.Palette {
+func (tree *oct) palette() color.Palette {
 	colors := []color.Color{}
-	leaves := tree.Leaves()
+	leaves := tree.leaves()
 
 	for i := 0; i < len(leaves); i++ {
-		colors = append(colors, *leaves[i].Color)
+		colors = append(colors, *leaves[i].color)
 	}
 
 	return colors
-}
-
-type OctreeQuantiser struct {
-	Size      int
-	Depth     uint8
-	Strategy  MergeStrategy
-}
-
-func (q OctreeQuantiser) Quantise(in image.Image) color.Palette {
-	octree := NewOctree()
-	bounds := in.Bounds()
-
-	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-		for x := bounds.Min.X; x < bounds.Max.X; x++ {
-			octree.Insert(in.At(x, y), q.Size, q.Depth, q.Strategy)
-		}
-	}
-
-	return octree.Palette()
 }
