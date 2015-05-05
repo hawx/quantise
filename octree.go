@@ -6,6 +6,7 @@ import (
 )
 
 type Strategy int
+
 const (
 	// Merge the colours representing the fewest pixels
 	LEAST Strategy = iota
@@ -15,9 +16,9 @@ const (
 )
 
 type OctreeQuantiser struct {
-	Size      int
-	Depth     uint8
-	Strategy  Strategy
+	Size     int
+	Depth    uint8
+	Strategy Strategy
 }
 
 func (q OctreeQuantiser) Quantise(in image.Image) color.Palette {
@@ -33,8 +34,6 @@ func (q OctreeQuantiser) Quantise(in image.Image) color.Palette {
 	return octree.palette()
 }
 
-
-
 // returns the dth bit of n
 func bit(n, d uint8) uint8 {
 	if n&(1<<(7-d)) == 0 {
@@ -43,6 +42,7 @@ func bit(n, d uint8) uint8 {
 	return 1
 }
 
+// An oct represents a node or leaf in the oct-tree.
 type oct struct {
 	isLeaf bool
 
@@ -95,8 +95,6 @@ func (tree *oct) deepest() []*oct {
 		last = nodes
 		nodes = []*oct{}
 	}
-
-	return last
 }
 
 func (tree *oct) leaves() []*oct {
